@@ -27,14 +27,14 @@ Fields:
 */
 typedef struct Node {
     struct Node* next;
-    char* dir_name;
+    void* value;
 } Node;
 
 /*A function that initializes a node in the queue with dir_name value*/
 Node* init_Node (char* dir_name){
     Node* node = calloc(1 , sizeof(Node));
     node -> next = NULL;
-    node ->dir_name = dir_name;
+    node ->value = (void*) dir_name;
     return node;
 }
 
@@ -90,8 +90,8 @@ char* pull(Queue* q ){
     Node* node = q->head;
     
     //copy the dir_name content
-    char* dir_name = malloc(strlen(node->dir_name));
-    strcpy(dir_name,node->dir_name);
+    char* dir_name = malloc(strlen(node->value));
+    strcpy(dir_name,node->value);
 
     //remove the first element and free it
     q->head = node->next;
@@ -107,10 +107,10 @@ void print_queue(Queue* q){
     printf ("[");
     for (int i=0;i<l;i++){
         if (i!= l-1){
-            printf("%s,",node->dir_name);
+            printf("%s,",(char*)node->value);
         }
         else{
-            printf("%s",node->dir_name);
+            printf("%s",(char*) node->value);
         }
         
         node = node->next;
@@ -140,14 +140,14 @@ void print_message (char* message){
 
 void basic_queue_test(){
     Queue q = init_Queue();
-    printf("Is empty : %s (should be false)\n",is_empty(&q)? "true" : "false" );
+    printf("Is empty : %s (should be true)\n",is_empty(&q)? "true" : "false" );
     insert(&q, "Tomer");
     insert(&q, "Efrat");
     insert(&q, "Niv");
     insert(&q, "Hava");
     insert(&q, "David");
     print_queue(&q);
-    printf("Is empty : %s (should be true)\n",is_empty(&q)? "true" : "false" );
+    printf("Is empty : %s (should be false)\n",is_empty(&q)? "true" : "false" );
     printf("Len is: %d (should be 5)\n",q.len);
     print_message(pull(&q));
     print_message(pull(&q));
@@ -161,6 +161,7 @@ void basic_queue_test(){
     insert(&q, "Niv");
     insert(&q, "Hava");
     insert(&q, "David");
+    print_queue(&q);
     free_queue(&q);
 }
 
@@ -240,6 +241,7 @@ void* searching_thread (void* arg){
 /* -----------------------------------------------------------------------------------------------
 -------------------------------------------    Main   --------------------------------------------
 -------------------------------------------------------------------------------------------------*/
+
 int main(int argc, char* argv[]){
 
     //Firstly: Parse and check argument given from the command line
