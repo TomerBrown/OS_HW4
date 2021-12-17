@@ -50,13 +50,16 @@ pthread_cond_t all_initialized_cond;
 
 
 atomic_int error_threads = 0;
+atomic_int count_found = 0;
 
 pthread_mutex_t queue_lock;
 pthread_mutex_t thread_lock;
 pthread_cond_t empty_cond;
+pthread_cond_t first_out_cond;
 
 Queue directory_queue;
 Queue threads_queue;
+
 
 
 //-------------------------------------------------------------------------
@@ -289,11 +292,13 @@ int search_directory(char* dir_name){
 
             insert(&directory_queue , exteneded_path);
             pthread_cond_broadcast(&empty_cond);
+            pthread_cond_broadcast(&first_out_cond);
             
         }
         else if (name_contains_term(x->d_name,term)){
             //if the filename contains the term -> print it and increment the counterS
             printf("%s\n",exteneded_path);
+            count_found ++;
         }
         x = readdir(dir);
     }
@@ -304,50 +309,68 @@ int search_directory(char* dir_name){
 
 void* searching_thread (void* arg){
     int tid = *(int*)arg;
+    
     Node* node;
     char* dir_name = malloc(PATH_MAX);
-    printf("%d: started\n",tid);
+    //printf("%d: started\n",tid);
     pthread_mutex_lock(&all_initialized_lock);
     initialized_counter++;
     while (initialized_counter < n){
-        printf("%d: waiting\n",tid);
+        //printf("%d: waiting\n",tid);
         pthread_cond_wait(&all_initialized_cond, &all_initialized_lock);
-        printf("%d: awaken\n",tid);
+        //printf("%d: awaken\n",tid);
     }
-    int waiting_flag = 0;
     pthread_cond_broadcast(&all_initialized_cond);
     pthread_mutex_unlock(&all_initialized_lock);
+
+    int waiting_flag = 0;
+    //printf("Tid : %d | waiting_flag : %d\n",tid,waiting_flag);
     while (1){
-        printf("Thread %d is running\n",tid);
+        //printf("Thread %d is running\n",tid);
         pthread_mutex_lock(&thread_lock);
         while (is_empty(&directory_queue)){
+            
+            
             if (waiting_flag == 0){
                 // If it is the first time it waits for the queue to get full. mark it and insert it to queue.
                 waiting_flag = 1;
-                if (insert(&threads_queue, (void*) &tid)==PROBELM){
-                    error_threads++;
-                    fprintf(stderr,"Error in thread %d: Could not allocate memory properly\n",tid);
-                    pthread_mutex_unlock(&thread_lock);
-                    pthread_exit(NULL);
-                }
-                print_queue_int(&threads_queue);
+                //todo: deal with error
+                insert(&threads_queue, arg); 
             }
+                //print_queue_int(&threads_queue);
+                
             if (threads_queue.len + error_threads == n && is_empty(&directory_queue)){
                 //If it is the end - tell everyone it is the end and finish
                 pthread_mutex_unlock(&thread_lock);
                 pthread_cond_broadcast(&empty_cond);
-                printf("Thread %d : Ending -Errors = %d | waiting = %d\n",tid ,error_threads,threads_queue.len);
+                pthread_cond_broadcast(&first_out_cond);
                 return SUCCESFULL;
             }
+
             pthread_cond_wait(&empty_cond, &thread_lock);
+            while (*(int*)threads_queue.head ->value != tid){
+                pthread_cond_wait(&first_out_cond,&thread_lock);
+            }
+            if (waiting_flag == 1){
+                waiting_flag = 0;
+                pull(&threads_queue);
+            }
         }
         //Now we know that the thread has job to do - and that it has the lock
         node = pull(&directory_queue);
         pthread_mutex_unlock(&thread_lock);
+        pthread_cond_broadcast(&empty_cond);
+        pthread_cond_broadcast(&first_out_cond);
+        
+        //printf("Tid %d is unlocked | waiting flag is : %d \n",tid,waiting_flag);
+        
         strcpy(dir_name,(char*) node->value);
         free(node);
-        printf("Thread %d: dir_name = %s\n",tid,dir_name);
-        print_queue_int(&threads_queue);
+        //printf("Thread %d: dir_name = %s\n",tid,dir_name);
+        //print_queue_int(&threads_queue);
+        //printf("tid: %d |",tid);
+        search_directory(dir_name);
+        //printf("\n");
     }
     return arg;
 }
@@ -384,7 +407,7 @@ int main(int argc, char* argv[]){
     pthread_mutex_init(&queue_lock, NULL);
     pthread_mutex_init(&thread_lock, NULL);
     pthread_cond_init (&empty_cond, NULL);
-    
+    pthread_cond_init (&first_out_cond, NULL);
     
     //1. Create a FIFO queue that holds directories.
     directory_queue = init_Queue();
@@ -410,7 +433,7 @@ int main(int argc, char* argv[]){
         pthread_join(threads[i], NULL);
     }
 
-    printf("root directory : '%s'  | term: %s | n: %d\n",root_directory,term,n);
+    printf("Done searching, found %d files\n",count_found);
     //print_queue(&directory_queue);
 
     free_queue(&directory_queue);
@@ -422,7 +445,7 @@ int main(int argc, char* argv[]){
     pthread_mutex_destroy(&queue_lock);
     pthread_mutex_destroy(&thread_lock);
     pthread_cond_destroy(&empty_cond);
-
+    pthread_cond_destroy(&first_out_cond);
 
     return 0;
 }
