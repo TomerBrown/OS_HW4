@@ -31,10 +31,13 @@ typedef struct Node {
 } Node;
 
 /*A function that initializes a node in the queue with dir_name value*/
-Node* init_Node (char* dir_name){
+Node* init_Node (void* value){
     Node* node = calloc(1 , sizeof(Node));
+    if (node == NULL){
+        return NULL;
+    }
     node -> next = NULL;
-    node ->value = (void*) dir_name;
+    node ->value = value;
     return node;
 }
 
@@ -66,8 +69,11 @@ int is_empty(Queue* q){
 }
 
 /*given a dir_name to enter to queue, the function inserts it as the last element and changes pointers accordingly*/
-void insert (Queue* q ,char* dir_name){
-    Node* node = init_Node(dir_name);
+int insert (Queue* q ,void* value){
+    Node* node = init_Node(value);
+    if (node == NULL){
+        return PROBELM;
+    }
     if (q->len == 0){
         q->head = node;
         q->tail = node;
@@ -78,27 +84,23 @@ void insert (Queue* q ,char* dir_name){
     }
     q->len ++;
     //todo: Lock neccessary parts to avoid collisions
+    return SUCCESFULL;
 }
 
 /*Returns the first dir_name in the queue (by FIFO order) and removes it from queue*/
-char* pull(Queue* q ){
+Node* pull(Queue* q ){
     
     //assert it is not empty for debugging purposes
     assert(!is_empty(q));
 
     //git the first one
     Node* node = q->head;
-    
-    //copy the dir_name content
-    char* dir_name = malloc(strlen(node->value));
-    strcpy(dir_name,node->value);
-
     //remove the first element and free it
     q->head = node->next;
     q->len--;
-    free(node);
-    return dir_name;
+    return node;
 }
+
 
 /*Iterate throgh the queue and print it element by element*/
 void print_queue(Queue* q){
@@ -111,6 +113,24 @@ void print_queue(Queue* q){
         }
         else{
             printf("%s",(char*) node->value);
+        }
+        
+        node = node->next;
+    }
+    printf("]\n");
+}
+
+
+void print_queue_int(Queue* q){
+    int l = q->len;
+    Node* node = q->head;
+    printf ("[");
+    for (int i=0;i<l;i++){
+        if (i!= l-1){
+            printf("%d,",*(int*)node->value);
+        }
+        else{
+            printf("%d",*(int*)node->value);
         }
         
         node = node->next;
@@ -149,12 +169,12 @@ void basic_queue_test(){
     print_queue(&q);
     printf("Is empty : %s (should be false)\n",is_empty(&q)? "true" : "false" );
     printf("Len is: %d (should be 5)\n",q.len);
-    print_message(pull(&q));
-    print_message(pull(&q));
-    print_message(pull(&q));
+    print_message(pull(&q)->value);
+    print_message(pull(&q)->value);
+    print_message(pull(&q)->value);
     printf("Len is: %d (should be 2)\n",q.len);
-    print_message(pull(&q));
-    print_message(pull(&q));
+    print_message(pull(&q)->value);
+    print_message(pull(&q)->value);
     printf("Len is: %d (should be 0)\n",q.len);
     insert(&q, "Tomer");
     insert(&q, "Efrat");
@@ -216,8 +236,14 @@ int n;
 pthread_mutex_t all_initialized_lock;
 atomic_int initialized_counter = 0;
 pthread_cond_t all_initialized_cond;
-Queue directory_queue;
 
+
+atomic_int error_threads = 0;
+
+pthread_mutex_t queue_lock;
+pthread_cond_t empty_cond;
+
+Queue directory_queue;
 Queue threads_queue;
 
 /* -----------------------------------------------------------------------------------------------
@@ -226,6 +252,8 @@ Queue threads_queue;
 
 void* searching_thread (void* arg){
     int tid = *(int*)arg;
+    Node* node;
+    char* dir_name = malloc(PATH_MAX);
     printf("%d: started\n",tid);
     pthread_mutex_lock(&all_initialized_lock);
     initialized_counter++;
@@ -234,9 +262,43 @@ void* searching_thread (void* arg){
         pthread_cond_wait(&all_initialized_cond, &all_initialized_lock);
         printf("%d: awaken\n",tid);
     }
+    int waiting_flag = 0;
     pthread_cond_broadcast(&all_initialized_cond);
     pthread_mutex_unlock(&all_initialized_lock);
-    
+
+
+    while (1){
+        printf("Thread %d is running\n",tid);
+        pthread_mutex_lock(&queue_lock);
+        while (is_empty(&directory_queue)){
+            if (waiting_flag == 0){
+                // If it is the first time it waits for the queue to get full mark it and insert it to queue.
+                waiting_flag = 1;
+                if (insert(&threads_queue, (void*) &tid)==PROBELM){
+                    error_threads++;
+                    fprintf(stderr,"Error in thread %d: Could not allocate memory properly\n",tid);
+                    pthread_mutex_unlock(&queue_lock);
+                    pthread_exit(NULL);
+                }
+                print_queue_int(&threads_queue);
+            }
+            if (threads_queue.len + error_threads == n && is_empty(&directory_queue)){
+                //If it is the end - tell everyone it is the end and finish
+                pthread_mutex_unlock(&queue_lock);
+                pthread_cond_broadcast(&empty_cond);
+                printf("Thread %d : Ending -Errors = %d | waiting = %d\n",tid ,error_threads,threads_queue.len);
+                return SUCCESFULL;
+            }
+            pthread_cond_wait(&empty_cond, &queue_lock);
+        }
+        //Now we know that the thread has job to do - and that it has the lock
+        node = pull(&directory_queue);
+        pthread_mutex_unlock(&queue_lock);
+        strcpy(dir_name,(char*) node->value);
+        free(node);
+        printf("Thread %d: dir_name = %s\n",tid,dir_name);
+        print_queue_int(&threads_queue);
+    }
     return arg;
 }
 
@@ -264,6 +326,10 @@ int main(int argc, char* argv[]){
     //Initialize all locks and condition Variables
     pthread_mutex_init(&all_initialized_lock, NULL);
     pthread_cond_init (&all_initialized_cond,NULL);
+
+    pthread_mutex_init(&queue_lock, NULL);
+    pthread_cond_init (&empty_cond, NULL);
+    
     
     //1. Create a FIFO queue that holds directories.
     directory_queue = init_Queue();
@@ -297,5 +363,9 @@ int main(int argc, char* argv[]){
     //Destroy all locks and condition variables
     pthread_mutex_destroy(&all_initialized_lock);
     pthread_cond_destroy(&all_initialized_cond);
+
+    pthread_mutex_destroy(&queue_lock);
+    pthread_cond_destroy(&empty_cond);
+
     return 0;
 }
