@@ -346,7 +346,7 @@ void* searching_thread (void* arg){
                 pthread_cond_broadcast(&first_out_cond);
                 return SUCCESFULL;
             }
-
+            printf("***********************Tid %d is a sleep************************ \n",tid);
             pthread_cond_wait(&empty_cond, &thread_lock);
             while (*(int*)threads_queue.head ->value != tid){
                 pthread_cond_wait(&first_out_cond,&thread_lock);
@@ -357,20 +357,24 @@ void* searching_thread (void* arg){
             }
         }
         //Now we know that the thread has job to do - and that it has the lock
-        node = pull(&directory_queue);
-        pthread_mutex_unlock(&thread_lock);
-        pthread_cond_broadcast(&empty_cond);
-        pthread_cond_broadcast(&first_out_cond);
-        
-        //printf("Tid %d is unlocked | waiting flag is : %d \n",tid,waiting_flag);
-        
-        strcpy(dir_name,(char*) node->value);
-        free(node);
-        //printf("Thread %d: dir_name = %s\n",tid,dir_name);
-        //print_queue_int(&threads_queue);
-        //printf("tid: %d |",tid);
-        search_directory(dir_name);
-        //printf("\n");
+        printf("***********************Tid %d is awaken************************ \n",tid);
+        while (!is_empty(&directory_queue)){
+            node = pull(&directory_queue);
+            pthread_mutex_unlock(&thread_lock);
+
+            //pthread_cond_broadcast(&empty_cond);
+            //pthread_cond_broadcast(&first_out_cond);
+            
+            //printf("Tid %d is unlocked | waiting flag is : %d \n",tid,waiting_flag);
+            
+            strcpy(dir_name,(char*) node->value);
+            free(node);
+            //printf("Thread %d: dir_name = %s\n",tid,dir_name);
+            //print_queue_int(&threads_queue);
+            printf("tid: %d |",tid);
+            search_directory(dir_name);
+            printf("\n");
+        }
     }
     return arg;
 }
