@@ -262,6 +262,7 @@ int search_directory(char* dir_name){
     struct stat info; // A struct to hold some data about file (linux fs api)
     char* exteneded_path; // A string to hold the concatenated path
     struct dirent* x; //could be either a file or a folder
+    printf("%s\n",dir_name);
     DIR* dir = opendir(dir_name);
     if (dir==NULL){
         printf("Directory %s: Permission denied.\n", dir_name);
@@ -280,20 +281,22 @@ int search_directory(char* dir_name){
             fprintf(stderr,"Error: can't get stat of directory entry for %s\n",exteneded_path);
             return PROBELM;
         }
-        if (!(info.st_mode & S_IRUSR) && (info.st_mode & S_IXUSR)){
-            printf("Directory %s: Permission denied.\n", exteneded_path);
-            return PROBELM;
-        }
+       
         if (S_ISDIR(info.st_mode)){
-            //printf("Folder: %s\n",exteneded_path);
-
-            insert(&directory_queue , exteneded_path);
+            //printf("Directory found: '%s'\n",exteneded_path);
+             if (!(info.st_mode & S_IRUSR) && (info.st_mode & S_IXUSR)){
+                return SUCCESFULL;
+            }
+            else if (insert(&directory_queue , exteneded_path)==PROBELM){
+                return PROBELM;
+            }
             pthread_cond_broadcast(&empty_cond);
             
         }
         else if (name_contains_term(x->d_name,term)){
             //if the filename contains the term -> print it and increment the counterS
             printf("%s\n",exteneded_path);
+            free (exteneded_path);
         }
         x = readdir(dir);
     }
@@ -304,50 +307,59 @@ int search_directory(char* dir_name){
 
 void* searching_thread (void* arg){
     int tid = *(int*)arg;
+    printf("%d: start \n", tid);
     Node* node;
     char* dir_name = malloc(PATH_MAX);
-    printf("%d: started\n",tid);
     pthread_mutex_lock(&all_initialized_lock);
     initialized_counter++;
     while (initialized_counter < n){
-        printf("%d: waiting\n",tid);
         pthread_cond_wait(&all_initialized_cond, &all_initialized_lock);
-        printf("%d: awaken\n",tid);
     }
-    int waiting_flag = 0;
+    int waiting_flag = 1;
     pthread_cond_broadcast(&all_initialized_cond);
     pthread_mutex_unlock(&all_initialized_lock);
+    printf("%d: before loop \n", tid);
     while (1){
-        printf("Thread %d is running\n",tid);
         pthread_mutex_lock(&thread_lock);
+        printf("%d: inside lock \n", tid);
         while (is_empty(&directory_queue)){
-            if (waiting_flag == 0){
-                // If it is the first time it waits for the queue to get full. mark it and insert it to queue.
-                waiting_flag = 1;
-                if (insert(&threads_queue, (void*) &tid)==PROBELM){
-                    error_threads++;
-                    fprintf(stderr,"Error in thread %d: Could not allocate memory properly\n",tid);
-                    pthread_mutex_unlock(&thread_lock);
-                    pthread_exit(NULL);
-                }
-                print_queue_int(&threads_queue);
-            }
             if (threads_queue.len + error_threads == n && is_empty(&directory_queue)){
                 //If it is the end - tell everyone it is the end and finish
                 pthread_mutex_unlock(&thread_lock);
                 pthread_cond_broadcast(&empty_cond);
-                printf("Thread %d : Ending -Errors = %d | waiting = %d\n",tid ,error_threads,threads_queue.len);
                 return SUCCESFULL;
             }
-            pthread_cond_wait(&empty_cond, &thread_lock);
+            while (*(int*)(threads_queue.head->value)!=tid){
+                pthread_cond_broadcast(&empty_cond);
+                pthread_cond_wait(&empty_cond, &thread_lock);
+            }  
         }
-        //Now we know that the thread has job to do - and that it has the lock
-        node = pull(&directory_queue);
+        if (waiting_flag == 1){
+            printf("%d is pulled \n", *(int*)pull(&threads_queue)->value);
+        }
         pthread_mutex_unlock(&thread_lock);
+            
+        
+        
+        //Now we know that the thread has job to do - and that it has the lock
+        printf("Thread %d is outside lock\n",tid);
+        node = pull(&directory_queue);
         strcpy(dir_name,(char*) node->value);
-        free(node);
-        printf("Thread %d: dir_name = %s\n",tid,dir_name);
-        print_queue_int(&threads_queue);
+        free (node);
+        //printf("Searhing folder '%s' inside Thread number : %d\n",dir_name,tid);
+        printf("tid: %d | ",tid);
+        if (search_directory(dir_name)==PROBELM){
+            error_threads++;
+            pthread_exit(NULL);
+        }
+        printf("\n");
+        if (waiting_flag ==1) {
+            insert(&threads_queue , &tid);
+            printf("tid %d is inserted \n",tid);
+            waiting_flag = 0;
+        }
+        
+        
     }
     return arg;
 }
@@ -400,6 +412,7 @@ int main(int argc, char* argv[]){
         tid = malloc(sizeof(int));
         *tid = i;
         pthread_create(&threads[i],NULL,&searching_thread, (void*)tid);
+        insert(&threads_queue,tid);
     }
 
     //4.After all searching threads are created, the main thread signals them to start searching.
@@ -410,7 +423,7 @@ int main(int argc, char* argv[]){
         pthread_join(threads[i], NULL);
     }
 
-    printf("root directory : '%s'  | term: %s | n: %d\n",root_directory,term,n);
+    //printf("root directory : '%s'  | term: %s | n: %d\n",root_directory,term,n);
     //print_queue(&directory_queue);
 
     free_queue(&directory_queue);
