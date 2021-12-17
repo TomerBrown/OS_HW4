@@ -388,6 +388,7 @@ int main(int argc, char* argv[]){
         return 1;
     }
 
+
     //Initialize all locks and condition Variables
     pthread_mutex_init(&all_initialized_lock, NULL);
     pthread_cond_init (&all_initialized_cond,NULL);
@@ -404,7 +405,7 @@ int main(int argc, char* argv[]){
 
     //2. Put the search root directory (where to start the search, specified in argv[1]) in the queue
     insert(&directory_queue, root_directory);
-
+    printf("tid %d is inserted \n ",5);
     int* tid;
     //3. Create n searching threads (as per the number received in argv[3]).
     pthread_t threads[n];
@@ -412,8 +413,10 @@ int main(int argc, char* argv[]){
         tid = malloc(sizeof(int));
         *tid = i;
         pthread_create(&threads[i],NULL,&searching_thread, (void*)tid);
+        printf("tid %d is inserted \n ",i);
         insert(&threads_queue,tid);
     }
+    printf("main: All inserted\n");
 
     //4.After all searching threads are created, the main thread signals them to start searching.
     //printf("Main: Broadcast all initialized, counter is: %d\n",initialized_counter);
