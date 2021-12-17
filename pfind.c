@@ -285,12 +285,14 @@ int search_directory(char* dir_name){
         }
         if (!(info.st_mode & S_IRUSR) && (info.st_mode & S_IXUSR)){
             printf("Directory %s: Permission denied.\n", exteneded_path);
-            return PROBELM;
+            return SUCCESFULL;
         }
         if (S_ISDIR(info.st_mode)){
             //printf("Folder: %s\n",exteneded_path);
 
-            insert(&directory_queue , exteneded_path);
+            if (insert(&directory_queue , exteneded_path)==PROBELM){
+                return PROBELM;
+            }
             pthread_cond_broadcast(&empty_cond);
             pthread_cond_broadcast(&first_out_cond);
             
@@ -373,7 +375,10 @@ void* searching_thread (void* arg){
             //printf("Thread %d: dir_name = %s\n",tid,dir_name);
             //print_queue_int(&threads_queue);
             printf("tid: %d |",tid);
-            search_directory(dir_name);
+            if (search_directory(dir_name)== PROBELM){
+                error_threads++;
+                pthread_exit(NULL);
+            }
             printf("\n");
         }
     }
@@ -452,5 +457,8 @@ int main(int argc, char* argv[]){
     pthread_cond_destroy(&empty_cond);
     pthread_cond_destroy(&first_out_cond);
 
+    if(error_threads >0 ){
+        return 1;
+    }
     return 0;
 }
