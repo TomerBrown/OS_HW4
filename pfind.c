@@ -22,7 +22,7 @@
 
 /*A struct to represent a node in the queue
 Fields:
-1) char* dir_name
+1) void* value (Will be char* for directory queue and int* for thread queue)
 2) Node* next
 */
 typedef struct Node {
@@ -218,6 +218,8 @@ atomic_int initialized_counter = 0;
 pthread_cond_t all_initialized_cond;
 Queue directory_queue;
 
+Queue threads_queue;
+
 /* -----------------------------------------------------------------------------------------------
 -----------------------------------------    Thread Code -----------------------------------------
 -------------------------------------------------------------------------------------------------*/
@@ -265,6 +267,7 @@ int main(int argc, char* argv[]){
     
     //1. Create a FIFO queue that holds directories.
     directory_queue = init_Queue();
+    threads_queue = init_Queue();
 
     //2. Put the search root directory (where to start the search, specified in argv[1]) in the queue
     insert(&directory_queue, root_directory);
