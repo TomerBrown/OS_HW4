@@ -299,6 +299,7 @@ int search_directory(char* dir_name){
             //if the filename contains the term -> print it and increment the counterS
             printf("%s\n",exteneded_path);
             count_found ++;
+            free (exteneded_path);
         }
         x = readdir(dir);
     }
