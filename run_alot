@@ -1,0 +1,11 @@
+#!/bin/bash
+python3 ./create_alot_of_files.py
+clear
+gcc -O3 -D_POSIX_C_SOURCE=200809 -Wall -std=c11 -pthread pfind.c -o pfind.out
+find ./tests_alot_files -name "*.txt" > bash_result_alot.txt
+./pfind.out ./tests_alot_files "txt" 4 > my_result_alot.txt
+./pfind.out ./tests_alot_files "txt" 4
+
+echo "bash has the following number of files found"
+wc -l "bash_result_alot.txt"
+rm -r tests_alot_files

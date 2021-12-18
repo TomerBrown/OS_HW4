@@ -276,6 +276,7 @@ int search_directory(char* dir_name){
     
     x = readdir(dir);
     while (x!=NULL){
+        //todo: remove .git
         if (strcmp(x->d_name,".")==0 || strcmp(x->d_name,"..")==0 || strcmp(x->d_name ,".git")==0){
             //case it is . or .. ignore it
             x = readdir(dir);
@@ -286,18 +287,22 @@ int search_directory(char* dir_name){
             fprintf(stderr,"Error: can't get stat of directory entry for %s\n",exteneded_path);
             return PROBELM;
         }
-        if (!(info.st_mode & S_IRUSR) && (info.st_mode & S_IXUSR)){
-            printf("Directory %s: Permission denied.\n", exteneded_path);
-            return SUCCESFULL;
-        }
+        
         if (S_ISDIR(info.st_mode)){
             //printf("Folder: %s\n",exteneded_path);
-
-            if (insert(&directory_queue , exteneded_path)==PROBELM){
+            if (!(info.st_mode & S_IRUSR) && (info.st_mode & S_IXUSR)){
+                printf("Directory %s: Permission denied.\n", exteneded_path);
+                x = readdir(dir);
+                continue;
+            }
+            else if (insert(&directory_queue , exteneded_path)==PROBELM){
                 return PROBELM;
             }
-            pthread_cond_broadcast(&empty_cond);
-            pthread_cond_broadcast(&first_out_cond);
+            else{
+                pthread_cond_broadcast(&empty_cond);
+                pthread_cond_broadcast(&first_out_cond);
+            }
+            
             
         }
         else if (name_contains_term(x->d_name,term)){
@@ -332,8 +337,9 @@ void* searching_thread (void* arg){
     int waiting_flag = 0;
     //printf("Tid : %d | waiting_flag : %d\n",tid,waiting_flag);
     while (1){
-        //printf("Thread %d is running\n",tid);
+        
         pthread_mutex_lock(&thread_lock);
+        //printf("Thread %d is has lock\n",tid);
         while (is_empty(&directory_queue)){
             
             
@@ -359,31 +365,27 @@ void* searching_thread (void* arg){
             }
             if (waiting_flag == 1){
                 waiting_flag = 0;
+                //printf("***********************Tid %d is awaken************************ \n",tid);
                 pull(&threads_queue);
             }
         }
         //Now we know that the thread has job to do - and that it has the lock
-        //printf("***********************Tid %d is awaken************************ \n",tid);
-        while (!is_empty(&directory_queue)){
-            node = pull(&directory_queue);
-            pthread_mutex_unlock(&thread_lock);
-
-            //pthread_cond_broadcast(&empty_cond);
-            //pthread_cond_broadcast(&first_out_cond);
-            
-            //printf("Tid %d is unlocked | waiting flag is : %d \n",tid,waiting_flag);
-            
-            strcpy(dir_name,(char*) node->value);
-            free(node);
-            //printf("Thread %d: dir_name = %s\n",tid,dir_name);
-            //print_queue_int(&threads_queue);
-            //printf("tid: %d |",tid);
-            if (search_directory(dir_name)== PROBELM){
-                error_threads++;
-                pthread_exit(NULL);
-            }
-            //printf("\n");
+        node = pull(&directory_queue);
+        pthread_mutex_unlock(&thread_lock);
+        //printf("tid: %d unlocked\n",tid);
+        pthread_cond_broadcast(&empty_cond);
+        pthread_cond_broadcast(&first_out_cond);
+        strcpy(dir_name,(char*) node->value);
+        free(node);
+        //printf("Thread %d: dir_name = %s\n",tid,dir_name);
+        //print_queue_int(&threads_queue);
+        printf("tid: %d |",tid);
+        if (search_directory(dir_name)== PROBELM){
+            error_threads++;
+            pthread_exit(NULL);
         }
+        printf("\n");
+        
     }
     return arg;
 }
