@@ -437,6 +437,14 @@ int main(int argc, char* argv[]){
     threads_queue = *ptr2;
 
 
+    //2. Put the search root directory (where to start the search, specified in argv[1]) in the queue
+    if (insert(&directory_queue, root_directory)==PROBELM){
+        free_queue(&directory_queue);
+        fprintf(stderr,"Error: Error in isertion to queue.\n");
+        return 1;
+    }
+
+
     //Initialize all locks and condition Variables
     pthread_mutex_init(&all_initialized_lock, NULL);
     pthread_cond_init (&all_initialized_cond,NULL);
@@ -450,8 +458,7 @@ int main(int argc, char* argv[]){
     
     
 
-    //2. Put the search root directory (where to start the search, specified in argv[1]) in the queue
-    insert(&directory_queue, root_directory);
+    
 
     int* tid;
     //3. Create n searching threads (as per the number received in argv[3]).
