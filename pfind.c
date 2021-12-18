@@ -1,3 +1,7 @@
+// By : Tomer Brown
+// ID: 318338415
+
+
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
@@ -14,6 +18,27 @@
 #define PROBELM -1
 
 
+// ---------------------------------------------------------------------------------------
+//                           General Implemantation Details
+// ---------------------------------------------------------------------------------------
+/*
+Two Queue are maintaind:
+1) directory_queue : for directories to be checked by order of insertion FIFO
+2) threads_queue : for making sure order of awaiking is maintained
+
+
+1) All thread will begin only after all are initialized ==> ** all_initialized_cond, all_initialized_lock ** - are for that
+2) All queue operation will be done atomicly is ensure by **queue_lock**
+3) Order of awaking from sleep is done by **first_out_cond** (To ensure it)
+4) To wait and until the queue is non empty - **empty_cond** is being used
+5) In order to assure Correct operation of the thread a critical part of checking what a thread  need to do  => **thread_lock**
+*/
+
+
+
+// ---------------------------------------------------------------------------------------
+//                           Struct and Types use by data structure
+// ---------------------------------------------------------------------------------------
 
 /*A struct to represent a node in the queue
 Fields:
@@ -154,23 +179,7 @@ void print_queue(Queue* q){
 }
 
 
-void print_queue_int(Queue* q){
-    int l = q->len;
-    Node* node = q->head;
-    printf ("[");
-    for (int i=0;i<l;i++){
-        if (i!= l-1){
-            printf("%d,",*(int*)node->value);
-        }
-        else{
-            printf("%d",*(int*)node->value);
-        }
-        
-        node = node->next;
-    }
-    printf("]\n");
-}
-
+/*A function to free the queue*/
 void free_queue(Queue* q){
     int len = q->len;
     if (len ==0){
@@ -185,38 +194,6 @@ void free_queue(Queue* q){
     }
 }
 
-/*Given a message to print the function prints it and then frees the message*/
-void print_message (char* message){
-    printf("%s\n",message);
-    free(message);
-}
-
-void basic_queue_test(){
-    Queue q = *init_Queue();
-    printf("Is empty : %s (should be true)\n",is_empty(&q)? "true" : "false" );
-    insert(&q, "Tomer");
-    insert(&q, "Efrat");
-    insert(&q, "Niv");
-    insert(&q, "Hava");
-    insert(&q, "David");
-    print_queue(&q);
-    printf("Is empty : %s (should be false)\n",is_empty(&q)? "true" : "false" );
-    printf("Len is: %d (should be 5)\n",q.len);
-    print_message(pull(&q)->value);
-    print_message(pull(&q)->value);
-    print_message(pull(&q)->value);
-    printf("Len is: %d (should be 2)\n",q.len);
-    print_message(pull(&q)->value);
-    print_message(pull(&q)->value);
-    printf("Len is: %d (should be 0)\n",q.len);
-    insert(&q, "Tomer");
-    insert(&q, "Efrat");
-    insert(&q, "Niv");
-    insert(&q, "Hava");
-    insert(&q, "David");
-    print_queue(&q);
-    free_queue(&q);
-}
 
 
 /* -----------------------------------------------------------------------------------------------
@@ -251,6 +228,7 @@ int name_contains_term(char* name, const char* term){
     return strstr(name,term)!=NULL;
 }
 
+/*A function that given a path returns an extension of it with slashes*/
 char* extend_path (char* original_path,char* extention){
     char* exteneded_path = calloc(1,PATH_MAX);
     sprintf(exteneded_path,"%s/%s",original_path,extention);
@@ -258,12 +236,13 @@ char* extend_path (char* original_path,char* extention){
 }
 
 
-
-
 /* -----------------------------------------------------------------------------------------------
 -----------------------------------------    Thread Code -----------------------------------------
 -------------------------------------------------------------------------------------------------*/
 
+/*This function performs the search inside a directory that was dequeued from directory_queue
+when it inserts a new directory to queue it broadcasts the information so other threads will become active
+*/
 int search_directory(char* dir_name){
     struct stat info; // A struct to hold some data about file (linux fs api)
     char* exteneded_path; // A string to hold the concatenated path
@@ -276,8 +255,7 @@ int search_directory(char* dir_name){
     
     x = readdir(dir);
     while (x!=NULL){
-        //todo: remove .git
-        if (strcmp(x->d_name,".")==0 || strcmp(x->d_name,"..")==0 || strcmp(x->d_name ,".git")==0){
+        if (strcmp(x->d_name,".")==0 || strcmp(x->d_name,"..")==0 ){
             //case it is . or .. ignore it
             x = readdir(dir);
             continue;
@@ -289,7 +267,6 @@ int search_directory(char* dir_name){
         }
         
         if (S_ISDIR(info.st_mode)){
-            //printf("Folder: %s\n",exteneded_path);
             if (!(info.st_mode & S_IRUSR) && (info.st_mode & S_IXUSR)){
                 printf("Directory %s: Permission denied.\n", exteneded_path);
                 x = readdir(dir);
@@ -317,40 +294,40 @@ int search_directory(char* dir_name){
     return 0;
 }
 
-
+/*This Function is the function that is being runned from main function.
+Some locks and Condition Variables are used here to ensure */
 void* searching_thread (void* arg){
     int tid = *(int*)arg;
-    
     Node* node;
     char* dir_name = malloc(PATH_MAX);
-    //printf("%d: started\n",tid);
     pthread_mutex_lock(&all_initialized_lock);
     initialized_counter++;
     while (initialized_counter < n){
-        //printf("%d: waiting\n",tid);
         pthread_cond_wait(&all_initialized_cond, &all_initialized_lock);
-        //printf("%d: awaken\n",tid);
     }
     pthread_cond_broadcast(&all_initialized_cond);
     pthread_mutex_unlock(&all_initialized_lock);
 
     int waiting_flag = 0;
-    //printf("Tid : %d | waiting_flag : %d\n",tid,waiting_flag);
     while (1){
         
         pthread_mutex_lock(&thread_lock);
-        //printf("Thread %d is has lock\n",tid);
         while (is_empty(&directory_queue)){
             
             if (waiting_flag == 0 ){
                 // If it is the first time it waits for the queue to get full. mark it and insert it to queue.
                 waiting_flag = 1;
-                //todo: deal with error
-                insert(&threads_queue, arg); 
+                 if (insert(&threads_queue, arg)==PROBELM){
+                    error_threads++;
+                    pthread_mutex_unlock(&thread_lock);
+                    pthread_cond_broadcast(&empty_cond);
+                    pthread_cond_broadcast(&first_out_cond);
+                    pthread_exit(NULL);
+                 }
                 pthread_cond_broadcast(&empty_cond);
                 pthread_cond_broadcast(&first_out_cond);
             }
-                //print_queue_int(&threads_queue);
+                
                 
             if (threads_queue.len + error_threads == n && is_empty(&directory_queue)){
                 //If it is the end - tell everyone it is the end and finish
@@ -360,36 +337,28 @@ void* searching_thread (void* arg){
                 return SUCCESFULL;
             }
             
-            //printf("***********************Tid %d is a sleep************************ \n",tid);
             pthread_cond_wait(&empty_cond, &thread_lock);
             while (*(int*)threads_queue.head ->value != tid){
                 pthread_cond_wait(&first_out_cond,&thread_lock);
             }
             if (waiting_flag == 1){
                 waiting_flag = 0;
-                //printf("***********************Tid %d is awaken************************ \n",tid);
                 pull(&threads_queue);
             }
         }
         //Now we know that the thread has job to do - and that it has the lock
         node = pull(&directory_queue);
         pthread_mutex_unlock(&thread_lock);
-       // printf("tid: %d unlocked\n",tid);
         pthread_cond_broadcast(&empty_cond);
         pthread_cond_broadcast(&first_out_cond);
         strcpy(dir_name,(char*) node->value);
         free(node);
-        //printf("Thread %d: dir_name = %s\n",tid,dir_name);
-        //print_queue_int(&threads_queue);
-        //printf("tid: %d |",tid);
         if (search_directory(dir_name)== PROBELM){
             error_threads++;
             pthread_cond_broadcast(&empty_cond);
             pthread_cond_broadcast(&first_out_cond);
             pthread_exit(NULL);
         }
-        
-        //printf("\n");
         
     }
     return arg;
@@ -399,9 +368,9 @@ void* searching_thread (void* arg){
 -------------------------------------------    Main   --------------------------------------------
 -------------------------------------------------------------------------------------------------*/
 
-
+/*This function frees and destroys everything it needs and return the 0 or 1 depending on error_code*/
 int finalize(int error_code){
-    /*This function frees and destroys everything it needs and return the 0 or 1 depending on error_code*/
+    
     free_queue(&directory_queue);
     free_queue(&threads_queue);
 
