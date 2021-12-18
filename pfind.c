@@ -81,12 +81,15 @@ Node* init_Node (void* value){
 
 
 /*A function that initializes a empty queue*/
-Queue init_Queue(){
+Queue* init_Queue(){
     Queue* queue = calloc(1,sizeof(Queue));
+    if (queue==NULL){
+        return NULL;
+    }
     queue->len = 0;
     queue->head = NULL;
     queue->tail = NULL;
-    return *queue;
+    return queue;
 }
 
 /*Returns 1 if and only if the queue is empty (e.i. it's length is 0) */  
@@ -189,7 +192,7 @@ void print_message (char* message){
 }
 
 void basic_queue_test(){
-    Queue q = init_Queue();
+    Queue q = *init_Queue();
     printf("Is empty : %s (should be true)\n",is_empty(&q)? "true" : "false" );
     insert(&q, "Tomer");
     insert(&q, "Efrat");
@@ -419,6 +422,21 @@ int main(int argc, char* argv[]){
         printf("Directory %s: Permission denied.\n", root_directory);
         return 1;
     }
+
+
+    //1. Create a FIFO queue that holds directories.
+    Queue* ptr1;
+    Queue* ptr2;
+    ptr1 = init_Queue();
+    ptr2 = init_Queue(); 
+    if (ptr1==NULL || ptr2==NULL){
+        fprintf(stderr,"Error: Could not initialize Queues.\n");
+        return 1;
+    }
+    directory_queue = *ptr1;
+    threads_queue = *ptr2;
+
+
     //Initialize all locks and condition Variables
     pthread_mutex_init(&all_initialized_lock, NULL);
     pthread_cond_init (&all_initialized_cond,NULL);
@@ -429,9 +447,8 @@ int main(int argc, char* argv[]){
     pthread_cond_init (&empty_cond, NULL);
     pthread_cond_init (&first_out_cond, NULL);
     
-    //1. Create a FIFO queue that holds directories.
-    directory_queue = init_Queue();
-    threads_queue = init_Queue();
+    
+    
 
     //2. Put the search root directory (where to start the search, specified in argv[1]) in the queue
     insert(&directory_queue, root_directory);
