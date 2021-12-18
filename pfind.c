@@ -458,6 +458,9 @@ int main(int argc, char* argv[]){
     for (int i=0; i<n ;i++){
         pthread_join(threads[i], NULL);
     }
+     if(error_threads == n ){
+        return finalize(1);
+    }
 
     printf("Done searching, found %d files\n",count_found);
 
