@@ -393,6 +393,22 @@ void* searching_thread (void* arg){
 -------------------------------------------------------------------------------------------------*/
 
 
+int finalize(int error_code){
+    /*This function frees and destroys everything it needs and return the 0 or 1 depending on error_code*/
+    free_queue(&directory_queue);
+    free_queue(&threads_queue);
+
+    //Destroy all locks and condition variables
+    pthread_mutex_destroy(&all_initialized_lock);
+    pthread_cond_destroy(&all_initialized_cond);
+
+    pthread_mutex_destroy(&queue_lock);
+    pthread_mutex_destroy(&thread_lock);
+    pthread_cond_destroy(&empty_cond);
+    pthread_cond_destroy(&first_out_cond);
+    return error_code;
+}
+
 
 
 int main(int argc, char* argv[]){
@@ -465,35 +481,25 @@ int main(int argc, char* argv[]){
     pthread_t threads[n];
     for (int i=0; i<n ;i++){
         tid = malloc(sizeof(int));
+        if (tid==NULL){
+            return finalize(1);
+        }
         *tid = i;
         pthread_create(&threads[i],NULL,&searching_thread, (void*)tid);
     }
 
     //4.After all searching threads are created, the main thread signals them to start searching.
-    //printf("Main: Broadcast all initialized, counter is: %d\n",initialized_counter);
     
-
     for (int i=0; i<n ;i++){
         pthread_join(threads[i], NULL);
     }
 
     printf("Done searching, found %d files\n",count_found);
-    //print_queue(&directory_queue);
 
-    free_queue(&directory_queue);
-    free_queue(&threads_queue);
 
-    //Destroy all locks and condition variables
-    pthread_mutex_destroy(&all_initialized_lock);
-    pthread_cond_destroy(&all_initialized_cond);
-
-    pthread_mutex_destroy(&queue_lock);
-    pthread_mutex_destroy(&thread_lock);
-    pthread_cond_destroy(&empty_cond);
-    pthread_cond_destroy(&first_out_cond);
 
     if(error_threads >0 ){
-        return 1;
+        return finalize(1);
     }
-    return 0;
+    return finalize(0);
 }
