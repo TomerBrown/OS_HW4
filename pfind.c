@@ -349,7 +349,7 @@ void* searching_thread (void* arg){
                 pthread_cond_broadcast(&first_out_cond);
                 return SUCCESFULL;
             }
-            printf("***********************Tid %d is a sleep************************ \n",tid);
+            //printf("***********************Tid %d is a sleep************************ \n",tid);
             pthread_cond_wait(&empty_cond, &thread_lock);
             while (*(int*)threads_queue.head ->value != tid){
                 pthread_cond_wait(&first_out_cond,&thread_lock);
@@ -360,7 +360,7 @@ void* searching_thread (void* arg){
             }
         }
         //Now we know that the thread has job to do - and that it has the lock
-        printf("***********************Tid %d is awaken************************ \n",tid);
+        //printf("***********************Tid %d is awaken************************ \n",tid);
         while (!is_empty(&directory_queue)){
             node = pull(&directory_queue);
             pthread_mutex_unlock(&thread_lock);
@@ -374,12 +374,12 @@ void* searching_thread (void* arg){
             free(node);
             //printf("Thread %d: dir_name = %s\n",tid,dir_name);
             //print_queue_int(&threads_queue);
-            printf("tid: %d |",tid);
+            //printf("tid: %d |",tid);
             if (search_directory(dir_name)== PROBELM){
                 error_threads++;
                 pthread_exit(NULL);
             }
-            printf("\n");
+            //printf("\n");
         }
     }
     return arg;
@@ -394,6 +394,7 @@ void* searching_thread (void* arg){
 
 int main(int argc, char* argv[]){
 
+    struct stat info;
     //Firstly: Parse and check argument given from the command line
     if (argc != 4) {
         fprintf(stderr,"Error: Too many or not enough arguments given to program. please check and retry.\n");
@@ -409,6 +410,15 @@ int main(int argc, char* argv[]){
         return 1;
     }
 
+
+    if (stat(root_directory,&info) < 0){
+            fprintf(stderr,"Error: can't get stat of directory entry for %s\n",root_directory);
+            return 1;
+        }
+    if (!((info.st_mode & S_IRUSR) && (info.st_mode & S_IXUSR))){
+        printf("Directory %s: Permission denied.\n", root_directory);
+        return 1;
+    }
     //Initialize all locks and condition Variables
     pthread_mutex_init(&all_initialized_lock, NULL);
     pthread_cond_init (&all_initialized_cond,NULL);
@@ -447,6 +457,7 @@ int main(int argc, char* argv[]){
     //print_queue(&directory_queue);
 
     free_queue(&directory_queue);
+    free_queue(&threads_queue);
 
     //Destroy all locks and condition variables
     pthread_mutex_destroy(&all_initialized_lock);

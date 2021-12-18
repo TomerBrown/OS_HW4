@@ -1,7 +1,7 @@
 #!/bin/bash
 clear
 gcc -O3 -D_POSIX_C_SOURCE=200809 -Wall -std=c11 -pthread pfind.c -o pfind.out
-find ./tests -name "*.txt" > bash_result
-./pfind.out ./tests "txt" 5 > my_result
-./pfind.out ./tests "txt" 5
+find ./tests_line -name "*.txt" > bash_result.txt
+./pfind.out ./tests_line "txt" 5 > my_result.txt
+./pfind.out ./tests_line "txt" 5
 
