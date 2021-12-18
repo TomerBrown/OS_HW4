@@ -283,7 +283,7 @@ int search_directory(char* dir_name){
             continue;
         }
         exteneded_path = extend_path(dir_name, x->d_name);
-        if (stat(exteneded_path,&info) < 0){
+        if (lstat(exteneded_path,&info) < 0){
             fprintf(stderr,"Error: can't get stat of directory entry for %s\n",exteneded_path);
             return PROBELM;
         }
@@ -342,12 +342,13 @@ void* searching_thread (void* arg){
         //printf("Thread %d is has lock\n",tid);
         while (is_empty(&directory_queue)){
             
-            
-            if (waiting_flag == 0){
+            if (waiting_flag == 0 ){
                 // If it is the first time it waits for the queue to get full. mark it and insert it to queue.
                 waiting_flag = 1;
                 //todo: deal with error
                 insert(&threads_queue, arg); 
+                pthread_cond_broadcast(&empty_cond);
+                pthread_cond_broadcast(&first_out_cond);
             }
                 //print_queue_int(&threads_queue);
                 
@@ -358,6 +359,7 @@ void* searching_thread (void* arg){
                 pthread_cond_broadcast(&first_out_cond);
                 return SUCCESFULL;
             }
+            
             //printf("***********************Tid %d is a sleep************************ \n",tid);
             pthread_cond_wait(&empty_cond, &thread_lock);
             while (*(int*)threads_queue.head ->value != tid){
@@ -372,19 +374,22 @@ void* searching_thread (void* arg){
         //Now we know that the thread has job to do - and that it has the lock
         node = pull(&directory_queue);
         pthread_mutex_unlock(&thread_lock);
-        //printf("tid: %d unlocked\n",tid);
+       // printf("tid: %d unlocked\n",tid);
         pthread_cond_broadcast(&empty_cond);
         pthread_cond_broadcast(&first_out_cond);
         strcpy(dir_name,(char*) node->value);
         free(node);
         //printf("Thread %d: dir_name = %s\n",tid,dir_name);
         //print_queue_int(&threads_queue);
-        printf("tid: %d |",tid);
+        //printf("tid: %d |",tid);
         if (search_directory(dir_name)== PROBELM){
             error_threads++;
+            pthread_cond_broadcast(&empty_cond);
+            pthread_cond_broadcast(&first_out_cond);
             pthread_exit(NULL);
         }
-        printf("\n");
+        
+        //printf("\n");
         
     }
     return arg;
@@ -412,7 +417,6 @@ int finalize(int error_code){
 }
 
 
-
 int main(int argc, char* argv[]){
 
     struct stat info;
@@ -431,16 +435,14 @@ int main(int argc, char* argv[]){
         return 1;
     }
 
-
-    if (stat(root_directory,&info) < 0){
-            fprintf(stderr,"Error: can't get stat of directory entry for %s\n",root_directory);
+    if (lstat(root_directory,&info) < 0){
+            fprintf(stderr,"Error: can't get stat of directory entry for (main) %s\n",root_directory);
             return 1;
         }
     if (!((info.st_mode & S_IRUSR) && (info.st_mode & S_IXUSR))){
         printf("Directory %s: Permission denied.\n", root_directory);
         return 1;
     }
-
 
     //1. Create a FIFO queue that holds directories.
     Queue* ptr1;
@@ -454,7 +456,6 @@ int main(int argc, char* argv[]){
     directory_queue = *ptr1;
     threads_queue = *ptr2;
 
-
     //2. Put the search root directory (where to start the search, specified in argv[1]) in the queue
     if (insert(&directory_queue, root_directory)==PROBELM){
         free_queue(&directory_queue);
@@ -462,22 +463,15 @@ int main(int argc, char* argv[]){
         return 1;
     }
 
-
     //Initialize all locks and condition Variables
     pthread_mutex_init(&all_initialized_lock, NULL);
     pthread_cond_init (&all_initialized_cond,NULL);
-
 
     pthread_mutex_init(&queue_lock, NULL);
     pthread_mutex_init(&thread_lock, NULL);
     pthread_cond_init (&empty_cond, NULL);
     pthread_cond_init (&first_out_cond, NULL);
     
-    
-    
-
-    
-
     int* tid;
     //3. Create n searching threads (as per the number received in argv[3]).
     pthread_t threads[n];
@@ -497,8 +491,6 @@ int main(int argc, char* argv[]){
     }
 
     printf("Done searching, found %d files\n",count_found);
-
-
 
     if(error_threads >0 ){
         return finalize(1);
