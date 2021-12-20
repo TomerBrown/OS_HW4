@@ -312,8 +312,8 @@ void* searching_thread (void* arg){
     while (1){
         
         pthread_mutex_lock(&thread_lock);
-        while (is_empty(&directory_queue)){
-            
+        
+        while (is_empty(&directory_queue) || threads_queue.len > directory_queue.len){
             if (waiting_flag == 0 ){
                 // If it is the first time it waits for the queue to get full. mark it and insert it to queue.
                 waiting_flag = 1;
@@ -344,6 +344,9 @@ void* searching_thread (void* arg){
             if (waiting_flag == 1){
                 waiting_flag = 0;
                 pull(&threads_queue);
+                if (! is_empty(&directory_queue)){
+                    break;
+                }
             }
         }
         //Now we know that the thread has job to do - and that it has the lock
